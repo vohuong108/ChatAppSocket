@@ -1,7 +1,4 @@
-
-
 package server;
-
 
 import java.io.IOException;
 import java.io.PrintWriter;
@@ -13,15 +10,11 @@ import java.util.Scanner;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
-
 public class Server {
-
     // All client names, so we can check for duplicates upon registration.
-    private static Set<String> names = new HashSet<>();
-
+    public static final Set<String> usernames = new HashSet<>(2);
     // The set of all the print writers for all the clients, used for broadcast.
     private static Set<PrintWriter> writers = new HashSet<>();
-
 
     private static class Handler implements Runnable {
         private String name;
@@ -29,42 +22,41 @@ public class Server {
         private Scanner in;
         private PrintWriter out;
 
-
         public Handler(Socket socket) {
             this.socket = socket;
         }
-
 
         public void run() {
             try {
                 in = new Scanner(socket.getInputStream());
                 out = new PrintWriter(socket.getOutputStream(), true);
 
-                // Keep requesting a name until we get a unique one.
+
                 while (true) {
-                    out.println("SUBMITNAME");
-                    name = in.nextLine();
+                    name = in.nextLine().substring(8);
+                    System.out.println("server received name: " + name);
                     if (name == null) {
                         return;
                     }
-                    synchronized (names) {
-                        if (!name.equals("") && !names.contains(name)) {
-                            names.add(name);
+                    synchronized (usernames) {
+                        if (!name.isEmpty() && !usernames.contains(name)) {
+                            usernames.add(name);
                             break;
+                        } else {
+                            out.println("INVALID");
                         }
                     }
                 }
-
-
                 out.println("NAMEACCEPTED " + name);
                 for (PrintWriter writer : writers) {
                     writer.println("MESSAGE " + name + " has joined");
                 }
                 writers.add(out);
 
-
+                // Accept messages from this client and broadcast them.
                 while (true) {
                     String input = in.nextLine();
+                    System.out.println("Server received: " + input);
                     if (input.toLowerCase().startsWith("/quit")) {
                         return;
                     }
@@ -80,7 +72,7 @@ public class Server {
                 }
                 if (name != null) {
                     System.out.println(name + " is leaving");
-                    names.remove(name);
+                    usernames.remove(name);
                     for (PrintWriter writer : writers) {
                         writer.println("MESSAGE " + name + " has left");
                     }
@@ -96,10 +88,13 @@ public class Server {
     public static void main(String[] args) throws Exception {
         System.out.println("The chat server is running...");
         ExecutorService pool = Executors.newFixedThreadPool(2);
-        try (ServerSocket listener = new ServerSocket(59001)) {
-            while (true) {
-                pool.execute(new Handler(listener.accept()));
-            }
+        ServerSocket listener = new ServerSocket(59008);
+
+        while (true) {
+            Socket clientSocket = listener.accept();
+            System.out.println("server listening client port: " + clientSocket.getRemoteSocketAddress());
+            pool.execute(new Handler(clientSocket));
         }
+
     }
 }
